@@ -1,0 +1,108 @@
+package com.snhu.inventoryplus
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
+import com.snhu.inventoryplus.databinding.EditInventoryBinding
+
+class EditInventory : Fragment() {
+
+    private var _binding: EditInventoryBinding? = null
+    private val binding get() = _binding!!
+    private lateinit var databaseHelper: InventoryDatabaseHelper
+    private var itemId: Long = MISSING_ITEM_ID
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = EditInventoryBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        databaseHelper = InventoryDatabaseHelper(requireContext())
+        itemId = arguments?.getLong(ARG_ITEM_ID, MISSING_ITEM_ID) ?: MISSING_ITEM_ID
+
+        val selectedItem = databaseHelper.getInventoryItem(itemId)
+        if (selectedItem == null) {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.selected_item_not_found),
+                Toast.LENGTH_SHORT
+            ).show()
+            findNavController().navigateUp()
+            return
+        }
+
+        binding.editTextItemName.setText(selectedItem.name)
+        binding.editTextQuantity.setText(selectedItem.quantity.toString())
+        binding.editTextLowAlert.setText(selectedItem.lowAlert.toString())
+
+        binding.buttonSaveChanges.setOnClickListener {
+            saveChanges()
+        }
+
+        binding.buttonCancelEditItem.setOnClickListener {
+            findNavController().navigateUp()
+        }
+    }
+
+    private fun saveChanges() {
+        val itemName = binding.editTextItemName.text?.toString()?.trim().orEmpty()
+        val quantityText = binding.editTextQuantity.text?.toString()?.trim().orEmpty()
+        val lowAlertText = binding.editTextLowAlert.text?.toString()?.trim().orEmpty()
+
+        binding.inputItemName.error = null
+        binding.inputQuantity.error = null
+        binding.inputLowAlert.error = null
+
+        var isValid = true
+        if (itemName.isEmpty()) {
+            binding.inputItemName.error = getString(R.string.item_name_required)
+            isValid = false
+        }
+
+        val quantity = quantityText.toIntOrNull()
+        if (quantityText.isEmpty()) {
+            binding.inputQuantity.error = getString(R.string.quantity_required)
+            isValid = false
+        } else if (quantity == null) {
+            binding.inputQuantity.error = getString(R.string.quantity_must_be_number)
+            isValid = false
+        }
+
+        val lowAlert = lowAlertText.toIntOrNull()
+        if (lowAlertText.isEmpty()) {
+            binding.inputLowAlert.error = getString(R.string.low_alert_required)
+            isValid = false
+        } else if (lowAlert == null) {
+            binding.inputLowAlert.error = getString(R.string.low_alert_must_be_number)
+            isValid = false
+        }
+
+        if (!isValid || quantity == null || lowAlert == null) {
+            return
+        }
+
+        databaseHelper.updateInventoryItem(itemId, itemName, quantity, lowAlert)
+        SMSNotificationSender.sendLowInventoryAlert(requireActivity(), itemName, quantity, lowAlert)
+        findNavController().navigateUp()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    companion object {
+        const val ARG_ITEM_ID = "itemId"
+        private const val MISSING_ITEM_ID = -1L
+    }
+}
